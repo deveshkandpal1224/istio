@@ -297,6 +297,33 @@ func (meta *Meta) Key() string {
 		meta.Name, meta.Namespace)
 }
 
+func ToPrettyJSON(s Spec) ([]byte, error) {
+	return toJSON(s, true)
+}
+
+func toJSON(s Spec, pretty bool) ([]byte, error) {
+	// golang protobuf. Use protoreflect.ProtoMessage to distinguish from gogo
+	// golang/protobuf 1.4+ will have this interface. Older golang/protobuf are gogo compatible
+	// but also not used by Istio at all.
+	if _, ok := s.(protoreflect.ProtoMessage); ok {
+		if pb, ok := s.(proto.Message); ok {
+			b, err := protomarshal.Marshal(pb)
+			return b, err
+		}
+	}
+
+	b := &bytes.Buffer{}
+	// gogo protobuf
+	if pb, ok := s.(gogoproto.Message); ok {
+		err := (&gogojsonpb.Marshaler{}).Marshal(b, pb)
+		return b.Bytes(), err
+	}
+	if pretty {
+		return json.MarshalIndent(s, "", "\t")
+	}
+	return json.Marshal(s)
+}
+
 func (c Config) DeepCopy() Config {
 	var clone Config
 	clone.Meta = c.Meta

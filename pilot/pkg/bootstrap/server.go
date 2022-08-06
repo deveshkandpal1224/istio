@@ -876,7 +876,22 @@ func (s *Server) initRegistryEventHandlers() {
 				}
 			}()
 			// For update events, trigger push only if spec has changed.
+
+			casamDr := false
+
+			if curr.GroupVersionKind == gvk.DestinationRule && strings.Contains(curr.Name, "casam") {
+				casamDr = true
+			}
+
+			if casamDr {
+				log.Infof("sfdclog: Handle event %s for configuration %s", event, curr.Key())
+				log.Infof("sfdclog: Handle event %s for configuration %v", event, curr)
+			}
 			if event == model.EventUpdate && !needsPush(prev, curr) {
+				if casamDr {
+					log.Infof("sfdclog: skipping push for %s as spec has not changed", prev.Key())	
+					log.Infof("sfdclog: skipping push for %s :: %v :: as spec has not changed", prev.Key(), prev)	
+				}
 				log.Debugf("skipping push for %s as spec has not changed", prev.Key())
 				return
 			}
