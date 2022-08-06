@@ -872,6 +872,14 @@ type PushContextDebug struct {
 
 // pushContextHandler dumps the current PushContext
 func (s *DiscoveryServer) pushContextHandler(w http.ResponseWriter, req *http.Request) {
+	if _, f := req.URL.Query()["init"]; f {
+		_, err := s.initPushContext(nil, nil, "")
+		if err != nil {
+			handleHTTPError(w, err)
+			return
+		}
+		return
+	}
 	push := PushContextDebug{
 		AuthorizationPolicies: s.globalPushContext().AuthzPolicies,
 		NetworkGateways:       s.globalPushContext().NetworkManager().GatewaysByNetwork(),

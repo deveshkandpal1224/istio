@@ -16,7 +16,6 @@ package xds
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -464,27 +463,11 @@ func debounce(ch chan *model.PushRequest, stopCh <-chan struct{}, opts debounceO
 }
 
 func configsUpdated(req *model.PushRequest) string {
-	configs := ""
-	for key := range req.ConfigsUpdated {
-		configs += key.String()
-		break
-	}
-	if len(req.ConfigsUpdated) > 1 {
-		more := fmt.Sprintf(" and %d more configs", len(req.ConfigsUpdated)-1)
-		configs += more
-	}
-	return configs
+	return req.ConfigsUpdatedString()
 }
 
 func reasonsUpdated(req *model.PushRequest) string {
-	switch len(req.Reason) {
-	case 0:
-		return "unknown"
-	case 1:
-		return string(req.Reason[0])
-	default:
-		return fmt.Sprintf("%s and %d more reasons", req.Reason[0], len(req.Reason)-1)
-	}
+	return req.ReasonsUpdated()
 }
 
 func doSendPushes(stopCh <-chan struct{}, semaphore chan struct{}, queue *PushQueue) {
@@ -554,6 +537,7 @@ func (s *DiscoveryServer) initPushContext(req *model.PushRequest, oldPushContext
 	}
 
 	s.updateMutex.Lock()
+	log.Infof("sfdclog: updating push context prev version: %s, curr version: %s", oldPushContext.PushVersion, push.PushVersion)
 	s.Env.PushContext = push
 	// Ensure we drop the cache in the lock to avoid races, where we drop the cache, fill it back up, then update push context
 	s.dropCacheForRequest(req)

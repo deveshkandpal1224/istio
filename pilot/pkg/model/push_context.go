@@ -425,6 +425,30 @@ func (pr *PushRequest) Merge(other *PushRequest) *PushRequest {
 	return pr
 }
 
+func (pr *PushRequest) ConfigsUpdatedString() string {
+	configs := ""
+	for key := range pr.ConfigsUpdated {
+		configs += key.String()
+		break
+	}
+	if len(pr.ConfigsUpdated) > 1 {
+		more := fmt.Sprintf(" and %d more configs", len(pr.ConfigsUpdated)-1)
+		configs += more
+	}
+	return configs
+}
+
+func (pr *PushRequest) ReasonsUpdated() string {
+	switch len(pr.Reason) {
+	case 0:
+		return "unknown"
+	case 1:
+		return string(pr.Reason[0])
+	default:
+		return fmt.Sprintf("%s and %d more reasons", pr.Reason[0], len(pr.Reason)-1)
+	}
+}
+
 // CopyMerge two update requests together. Unlike Merge, this will not mutate either input.
 // This should be used when we are modifying a shared PushRequest (typically any time it's in the context
 // of a single proxy)
@@ -1206,6 +1230,7 @@ func (ps *PushContext) updateContext(
 	var servicesChanged, virtualServicesChanged, destinationRulesChanged, gatewayChanged,
 		authnChanged, authzChanged, envoyFiltersChanged, sidecarsChanged, telemetryChanged, gatewayAPIChanged,
 		wasmPluginsChanged, proxyConfigsChanged bool
+	log.Infof("sfdclog: updating push context with configs: %s", pushReq.ConfigsUpdatedString())
 
 	for conf := range pushReq.ConfigsUpdated {
 		switch conf.Kind {
@@ -1267,6 +1292,7 @@ func (ps *PushContext) updateContext(
 	}
 
 	if destinationRulesChanged {
+		log.Info("sfdclog: updating destination rules in push context")
 		if err := ps.initDestinationRules(env); err != nil {
 			return err
 		}
