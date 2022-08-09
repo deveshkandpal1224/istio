@@ -96,10 +96,18 @@ func createCacheHandler(cl *Client, schema collection.Schema, i informers.Generi
 		UpdateFunc: func(old, cur interface{}) {
 			incrementEvent(kind, "update")
 			if !cl.beginSync.Load() {
+				incrementEvent(kind, "beginsync")
 				return
 			}
 			cl.queue.Push(func() error {
-				return h.onEvent(old, cur, model.EventUpdate)
+				incrementEvent(kind, "beforeprocess")
+				err := h.onEvent(old, cur, model.EventUpdate)
+				if err != nil {
+					incrementEvent(kind, "errorevent")
+				} else {
+					incrementEvent(kind, "completed")
+				}
+				return err
 			})
 		},
 		DeleteFunc: func(obj interface{}) {
