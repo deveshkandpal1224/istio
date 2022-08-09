@@ -28,6 +28,7 @@ import (
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pkg/config"
 	"istio.io/istio/pkg/config/schema/collection"
+	"istio.io/istio/pkg/config/schema/gvk"
 	"istio.io/pkg/log"
 )
 
@@ -94,18 +95,34 @@ func createCacheHandler(cl *Client, schema collection.Schema, i informers.Generi
 			})
 		},
 		UpdateFunc: func(old, cur interface{}) {
-			incrementEvent(kind, "update")
+			currItem, _ := cur.(runtime.Object)
+
+			currConfig := TranslateObject(currItem, h.schema.Resource().GroupVersionKind(), h.client.domainSuffix)
+			casamDr := false
+
+			if currConfig.GroupVersionKind == gvk.DestinationRule && currConfig.Namespace == "core-on-sam" {
+				casamDr = true
+			}
+			if casamDr {
+				incrementEvent(kind, "update")
+			}
 			if !cl.beginSync.Load() {
-				incrementEvent(kind, "beginsync")
+				if casamDr {
+					incrementEvent(kind, "beginsync")
+				}
 				return
 			}
 			cl.queue.Push(func() error {
-				incrementEvent(kind, "beforeprocess")
+				if casamDr {
+					incrementEvent(kind, "beforeprocess")
+				}
 				err := h.onEvent(old, cur, model.EventUpdate)
-				if err != nil {
-					incrementEvent(kind, "errorevent")
-				} else {
-					incrementEvent(kind, "completed")
+				if casamDr {
+					if err != nil {
+						incrementEvent(kind, "errorevent")
+					} else {
+						incrementEvent(kind, "completed")
+					}
 				}
 				return err
 			})
