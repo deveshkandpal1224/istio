@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/rand"
 
 	"istio.io/pkg/log"
+	"istio.io/pkg/monitoring"
 )
 
 // Task to be performed.
@@ -41,6 +42,32 @@ type Instance interface {
 
 	// Closed returns a chan that will be signaled when the Instance has stopped processing tasks.
 	Closed() <-chan struct{}
+}
+
+var add = monitoring.NewSum(
+	"pilot_queue_adds",
+	"Total number of entries to queue.",
+)
+
+var size = monitoring.NewGauge(
+	"pilot_queue_size",
+	"Total number of items in queue.",
+)
+
+var done = monitoring.NewSum(
+	"pilot_queue_done",
+	"Total number of items processing done.",
+)
+
+var inprogress = monitoring.NewGauge(
+	"pilot_queue_inprogress",
+	"Total number of items in progress.",
+)
+
+func init() {
+	monitoring.MustRegister(add)
+	monitoring.MustRegister(size)
+	monitoring.MustRegister(done)
 }
 
 type queueImpl struct {
@@ -99,7 +126,9 @@ func (q *queueImpl) Push(item Task) {
 	q.cond.L.Lock()
 	defer q.cond.L.Unlock()
 	if !q.closing {
+		add.Increment()
 		q.tasks = append(q.tasks, &BackoffTask{item, newExponentialBackOff(q.retryBackoff)})
+		size.RecordInt(int64(len(q.tasks)))
 	}
 	q.cond.Signal()
 }
@@ -138,20 +167,23 @@ func (q *queueImpl) Run(stop <-chan struct{}) {
 
 		// wait for closing to be set, or a task to be pushed
 		for !q.closing && len(q.tasks) == 0 {
+			size.RecordInt(int64(len(q.tasks)))
 			q.cond.Wait()
 		}
 
 		if q.closing {
+			size.RecordInt(int64(len(q.tasks)))
 			q.cond.L.Unlock()
 			// We must be shutting down.
 			return
 		}
 
 		backoffTask := q.tasks[0]
+		inprogress.Increment()
 		// Slicing will not free the underlying elements of the array, so explicitly clear them out here
 		q.tasks[0] = nil
 		q.tasks = q.tasks[1:]
-
+		size.RecordInt(int64(len(q.tasks)))
 		q.cond.L.Unlock()
 
 		if err := backoffTask.task(); err != nil {
@@ -164,5 +196,7 @@ func (q *queueImpl) Run(stop <-chan struct{}) {
 				q.pushRetryTask(backoffTask)
 			})
 		}
+		inprogress.Decrement()
+		done.Increment()
 	}
 }

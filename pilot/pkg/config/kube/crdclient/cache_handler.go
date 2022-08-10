@@ -42,17 +42,16 @@ type cacheHandler struct {
 }
 
 func (h *cacheHandler) onEvent(old interface{}, curr interface{}, event model.Event) error {
-	if err := h.client.checkReadyForEvents(curr); err != nil {
-		return err
-	}
-
 	currItem, ok := curr.(runtime.Object)
 	if !ok {
 		scope.Warnf("New Object can not be converted to runtime Object %v, is type %T", curr, curr)
 		return nil
 	}
 	currConfig := TranslateObject(currItem, h.schema.Resource().GroupVersionKind(), h.client.domainSuffix)
-
+	if err := h.client.checkReadyForEvents(curr); err != nil {
+		log.Infof("sfdclog:checkReadyForEvents the event %s with version %s %v", currConfig.Name, currConfig.ResourceVersion, err)
+		return err
+	}
 	var oldConfig config.Config
 	if old != nil {
 		oldItem, ok := old.(runtime.Object)
@@ -64,9 +63,12 @@ func (h *cacheHandler) onEvent(old interface{}, curr interface{}, event model.Ev
 	}
 
 	// TODO we may consider passing a pointer to handlers instead of the value. While spec is a pointer, the meta will be copied
+	log.Infof("sfdclog:invoking handlers the event %s with version %s %v", currConfig.Name, currConfig.ResourceVersion)
 	for _, f := range h.client.handlers[h.schema.Resource().GroupVersionKind()] {
 		f(oldConfig, currConfig, event)
+		log.Infof("sfdclog:processing handler the event %s with version %s %v", currConfig.Name, currConfig.ResourceVersion)
 	}
+	log.Infof("sfdclog:completed handler the event %s with version %s %v", currConfig.Name, currConfig.ResourceVersion)
 	return nil
 }
 
@@ -108,12 +110,14 @@ func createCacheHandler(cl *Client, schema collection.Schema, i informers.Generi
 			}
 			if !cl.beginSync.Load() {
 				if casamDr {
+					log.Infof("sfdclog:begin sync is not ready for the event %s with version %s", currConfig.Name, currConfig.ResourceVersion)
 					incrementEvent(kind, "beginsync")
 				}
 				return
 			}
 			cl.queue.Push(func() error {
 				if casamDr {
+					log.Infof("sfdclog:Processing the event %s with version %s", currConfig.Name, currConfig.ResourceVersion)
 					incrementEvent(kind, "beforeprocess")
 				}
 				err := h.onEvent(old, cur, model.EventUpdate)
@@ -121,6 +125,7 @@ func createCacheHandler(cl *Client, schema collection.Schema, i informers.Generi
 					if err != nil {
 						incrementEvent(kind, "errorevent")
 					} else {
+						log.Infof("sfdclog:Completed the event %s with version %s", currConfig.Name, currConfig.ResourceVersion)
 						incrementEvent(kind, "completed")
 					}
 				}
