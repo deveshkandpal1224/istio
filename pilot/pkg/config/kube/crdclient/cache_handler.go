@@ -44,7 +44,7 @@ type cacheHandler struct {
 func (h *cacheHandler) onEvent(old interface{}, curr interface{}, event model.Event) error {
 	currItem, ok := curr.(runtime.Object)
 	if !ok {
-		scope.Warnf("New Object can not be converted to runtime Object %v, is type %T", curr, curr)
+		log.Warnf("New Object can not be converted to runtime Object %v, is type %T", curr, curr)
 		return nil
 	}
 	currConfig := TranslateObject(currItem, h.schema.Resource().GroupVersionKind(), h.client.domainSuffix)
@@ -63,12 +63,14 @@ func (h *cacheHandler) onEvent(old interface{}, curr interface{}, event model.Ev
 	}
 
 	// TODO we may consider passing a pointer to handlers instead of the value. While spec is a pointer, the meta will be copied
-	log.Infof("sfdclog:invoking handlers the event %s with version %s %v", currConfig.Name, currConfig.ResourceVersion)
+	log.Infof("sfdclog:invoking %d handlers the event %s with version %s",
+		len(h.client.handlers[h.schema.Resource().GroupVersionKind()]), currConfig.Name, currConfig.ResourceVersion)
 	for _, f := range h.client.handlers[h.schema.Resource().GroupVersionKind()] {
+		log.Infof("sfdclog:processing handler the event %s with version %s", currConfig.Name, currConfig.ResourceVersion)
 		f(oldConfig, currConfig, event)
-		log.Infof("sfdclog:processing handler the event %s with version %s %v", currConfig.Name, currConfig.ResourceVersion)
+		log.Infof("sfdclog:processed handler the event %s with version %s", currConfig.Name, currConfig.ResourceVersion)
 	}
-	log.Infof("sfdclog:completed handler the event %s with version %s %v", currConfig.Name, currConfig.ResourceVersion)
+	log.Infof("sfdclog:completed all handlers the event %s with version %s", currConfig.Name, currConfig.ResourceVersion)
 	return nil
 }
 

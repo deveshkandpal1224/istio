@@ -888,7 +888,6 @@ func (s *Server) initRegistryEventHandlers() {
 			}
 			if event == model.EventUpdate && !needsPush(prev, curr) {
 				if casamDr {
-					log.Infof("sfdclog: skipping push for %s as spec has not changed", prev.Key())
 					log.Infof("sfdclog: skipping push for %s :: %v :: as spec has not changed", prev.Key(), prev)
 				}
 				log.Debugf("skipping push for %s as spec has not changed", prev.Key())
