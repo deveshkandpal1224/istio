@@ -117,9 +117,12 @@ func createCacheHandler(cl *Client, schema collection.Schema, i informers.Generi
 				}
 				return
 			}
+			if casamDr {
+				log.Infof("sfdclog:pushing the event to queue %s with version %s", currConfig.Name, currConfig.ResourceVersion)
+			}
 			cl.queue.Push(func() error {
 				if casamDr {
-					log.Infof("sfdclog:Processing the event %s with version %s", currConfig.Name, currConfig.ResourceVersion)
+					log.Infof("sfdclog:queue processing the event %s with version %s", currConfig.Name, currConfig.ResourceVersion)
 					incrementEvent(kind, "beforeprocess")
 				}
 				err := h.onEvent(old, cur, model.EventUpdate)
