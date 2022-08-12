@@ -147,29 +147,52 @@ func (q *queueImpl) Closed() <-chan struct{} {
 	return q.closed
 }
 
-func (q *queueImpl) Get() *BackoffTask {
+func (q *queueImpl) Get() (*BackoffTask, bool) {
 	q.cond.L.Lock()
 	defer q.cond.L.Unlock()
-
 	// wait for closing to be set, or a task to be pushed
 	for !q.closing && len(q.tasks) == 0 {
 		size.RecordInt(int64(len(q.tasks)))
 		q.cond.Wait()
 	}
 
-	if q.closing {
+	if len(q.tasks) == 0 {
 		size.RecordInt(int64(len(q.tasks)))
 		// We must be shutting down.
-		return nil
+		return nil, true
 	}
-
 	backoffTask := q.tasks[0]
 	inprogress.Increment()
 	// Slicing will not free the underlying elements of the array, so explicitly clear them out here
 	q.tasks[0] = nil
 	q.tasks = q.tasks[1:]
 	size.RecordInt(int64(len(q.tasks)))
-	return backoffTask
+	return backoffTask, false
+}
+
+func (q *queueImpl) processNextItem() bool {
+	// Wait until there is a new item in the working queue
+	backoffTask, quit := q.Get()
+	if quit {
+		return false
+	}
+	defer func() {
+		inprogress.Decrement()
+		done.Increment()
+	}()
+
+	// Invoke the method containing the business logic
+	if err := backoffTask.task(); err != nil {
+		delay := q.delay
+		if q.retryBackoff != nil {
+			delay = backoffTask.backoff.NextBackOff()
+		}
+		log.Infof("Work item handle failed (%v), retry after delay %v", err, delay)
+		time.AfterFunc(delay, func() {
+			q.pushRetryTask(backoffTask)
+		})
+	}
+	return true
 }
 
 func (q *queueImpl) Run(stop <-chan struct{}) {
@@ -188,22 +211,6 @@ func (q *queueImpl) Run(stop <-chan struct{}) {
 		q.cond.L.Unlock()
 	}()
 
-	for {
-		backoffTask := q.Get()
-		if backoffTask == nil {
-			return
-		}
-		if err := backoffTask.task(); err != nil {
-			delay := q.delay
-			if q.retryBackoff != nil {
-				delay = backoffTask.backoff.NextBackOff()
-			}
-			log.Infof("Work item handle failed (%v), retry after delay %v", err, delay)
-			time.AfterFunc(delay, func() {
-				q.pushRetryTask(backoffTask)
-			})
-		}
-		inprogress.Decrement()
-		done.Increment()
+	for q.processNextItem() {
 	}
 }
