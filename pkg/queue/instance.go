@@ -68,6 +68,7 @@ func init() {
 	monitoring.MustRegister(add)
 	monitoring.MustRegister(size)
 	monitoring.MustRegister(done)
+	monitoring.MustRegister(inprogress)
 }
 
 type queueImpl struct {
@@ -184,19 +185,20 @@ func (q *queueImpl) Run(stop <-chan struct{}) {
 		q.tasks[0] = nil
 		q.tasks = q.tasks[1:]
 		size.RecordInt(int64(len(q.tasks)))
-		q.cond.L.Unlock()
-
-		if err := backoffTask.task(); err != nil {
-			delay := q.delay
-			if q.retryBackoff != nil {
-				delay = backoffTask.backoff.NextBackOff()
+		go func() {
+			if err := backoffTask.task(); err != nil {
+				delay := q.delay
+				if q.retryBackoff != nil {
+					delay = backoffTask.backoff.NextBackOff()
+				}
+				log.Infof("Work item handle failed (%v), retry after delay %v", err, delay)
+				time.AfterFunc(delay, func() {
+					q.pushRetryTask(backoffTask)
+				})
 			}
-			log.Infof("Work item handle failed (%v), retry after delay %v", err, delay)
-			time.AfterFunc(delay, func() {
-				q.pushRetryTask(backoffTask)
-			})
-		}
-		inprogress.Decrement()
-		done.Increment()
+			inprogress.Decrement()
+			done.Increment()
+		}()
+		q.cond.L.Unlock()
 	}
 }
