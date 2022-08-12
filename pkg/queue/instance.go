@@ -147,6 +147,31 @@ func (q *queueImpl) Closed() <-chan struct{} {
 	return q.closed
 }
 
+func (q *queueImpl) Get() *BackoffTask {
+	q.cond.L.Lock()
+	defer q.cond.L.Unlock()
+
+	// wait for closing to be set, or a task to be pushed
+	for !q.closing && len(q.tasks) == 0 {
+		size.RecordInt(int64(len(q.tasks)))
+		q.cond.Wait()
+	}
+
+	if q.closing {
+		size.RecordInt(int64(len(q.tasks)))
+		// We must be shutting down.
+		return nil
+	}
+
+	backoffTask := q.tasks[0]
+	inprogress.Increment()
+	// Slicing will not free the underlying elements of the array, so explicitly clear them out here
+	q.tasks[0] = nil
+	q.tasks = q.tasks[1:]
+	size.RecordInt(int64(len(q.tasks)))
+	return backoffTask
+}
+
 func (q *queueImpl) Run(stop <-chan struct{}) {
 	log.Debugf("started queue %s", q.id)
 	defer func() {
@@ -164,41 +189,21 @@ func (q *queueImpl) Run(stop <-chan struct{}) {
 	}()
 
 	for {
-		q.cond.L.Lock()
-
-		// wait for closing to be set, or a task to be pushed
-		for !q.closing && len(q.tasks) == 0 {
-			size.RecordInt(int64(len(q.tasks)))
-			q.cond.Wait()
-		}
-
-		if q.closing {
-			size.RecordInt(int64(len(q.tasks)))
-			q.cond.L.Unlock()
-			// We must be shutting down.
+		backoffTask := q.Get()
+		if backoffTask == nil {
 			return
 		}
-
-		backoffTask := q.tasks[0]
-		inprogress.Increment()
-		// Slicing will not free the underlying elements of the array, so explicitly clear them out here
-		q.tasks[0] = nil
-		q.tasks = q.tasks[1:]
-		size.RecordInt(int64(len(q.tasks)))
-		go func() {
-			if err := backoffTask.task(); err != nil {
-				delay := q.delay
-				if q.retryBackoff != nil {
-					delay = backoffTask.backoff.NextBackOff()
-				}
-				log.Infof("Work item handle failed (%v), retry after delay %v", err, delay)
-				time.AfterFunc(delay, func() {
-					q.pushRetryTask(backoffTask)
-				})
+		if err := backoffTask.task(); err != nil {
+			delay := q.delay
+			if q.retryBackoff != nil {
+				delay = backoffTask.backoff.NextBackOff()
 			}
-			inprogress.Decrement()
-			done.Increment()
-		}()
-		q.cond.L.Unlock()
+			log.Infof("Work item handle failed (%v), retry after delay %v", err, delay)
+			time.AfterFunc(delay, func() {
+				q.pushRetryTask(backoffTask)
+			})
+		}
+		inprogress.Decrement()
+		done.Increment()
 	}
 }
