@@ -282,19 +282,11 @@ func (b *EndpointBuilder) buildLocalityLbEndpointsFromShards(
 		// If the downstream service is configured as cluster-local, only include endpoints that
 		// reside in the same cluster.
 		if isClusterLocal && (shardKey.Cluster != b.clusterID) {
-			if casam {
-				// nolint
-				log.Infof("sfdclog: for cluster %s :: return as cluster mismatch, isClusterLocal: %v, shardKey.Cluster=%s, b.clusterID=%s", b.clusterName, isClusterLocal, shardKey.Cluster, b.clusterID)
-			}
 			continue
 		}
 		for _, ep := range endpoints {
 			// TODO(nmittler): Consider merging discoverability policy with cluster-local
 			if !ep.IsDiscoverableFromProxy(b.proxy) {
-				if casam {
-					// nolint
-					log.Infof("sfdclog: for cluster %s :: return as IsDiscoverableFromProxy false, b.proxy.Metadata.ClusterID: %s, ep.Locality.ClusterID=%s", b.clusterName, b.proxy.Metadata.ClusterID, ep.Locality.ClusterID)
-				}
 				continue
 			}
 			if svcPort.Name != ep.ServicePortName {
@@ -302,11 +294,6 @@ func (b *EndpointBuilder) buildLocalityLbEndpointsFromShards(
 			}
 			// Port labels
 			if !epLabels.SubsetOf(ep.Labels) {
-				if casam {
-					// nolint
-					log.Infof("sfdclog: for cluster %s :: returning as label subset does not match, dr labels: %v, ep labels: %v, dr version: %s, dr subsets: %v", b.clusterName, epLabels, ep.Labels, b.DestinationRuleVersion(), b.DestinationRule().Subsets)
-					log.Infof("sfdclog: for cluster %s :: entire DR printed dr subsets: %v", b.clusterName, b.DestinationRule())
-				}
 				continue
 			}
 
@@ -343,10 +330,6 @@ func (b *EndpointBuilder) buildLocalityLbEndpointsFromShards(
 	}
 	shards.Unlock()
 
-	if casam {
-		// nolint
-		log.Infof("sfdclog: for cluster %s :: localityEbMap: %v", b.clusterName, len(localityEpMap))
-	}
 	locEps := make([]*LocLbEndpointsAndOptions, 0, len(localityEpMap))
 	locs := make([]string, 0, len(localityEpMap))
 	for k := range localityEpMap {
@@ -367,17 +350,12 @@ func (b *EndpointBuilder) buildLocalityLbEndpointsFromShards(
 		locEps = append(locEps, locLbEps)
 	}
 
-	if casam {
-		// nolint
-		log.Infof("sfdclog: for cluster %s :: locEps: %v", b.clusterName, len(locEps))
-	}
 	if len(locEps) == 0 {
 		b.push.AddMetric(model.ProxyStatusClusterNoInstances, b.clusterName, "", "")
 	}
 
 	return locEps
 }
-
 
 func (b *EndpointBuilder) DestinationRuleVersion() string {
 	if b.destinationRule == nil {

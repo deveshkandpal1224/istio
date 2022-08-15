@@ -1230,7 +1230,7 @@ func (ps *PushContext) updateContext(
 	var servicesChanged, virtualServicesChanged, destinationRulesChanged, gatewayChanged,
 		authnChanged, authzChanged, envoyFiltersChanged, sidecarsChanged, telemetryChanged, gatewayAPIChanged,
 		wasmPluginsChanged, proxyConfigsChanged bool
-	log.Infof("sfdclog: updating push context with configs: %s", pushReq.ConfigsUpdatedString())
+	// log.Infof("sfdclog: updating push context with configs: %s", pushReq.ConfigsUpdatedString())
 
 	for conf := range pushReq.ConfigsUpdated {
 		switch conf.Kind {
@@ -1292,7 +1292,7 @@ func (ps *PushContext) updateContext(
 	}
 
 	if destinationRulesChanged {
-		log.Info("sfdclog: updating destination rules in push context")
+		//	log.Info("sfdclog: updating destination rules in push context")
 		if err := ps.initDestinationRules(env); err != nil {
 			return err
 		}

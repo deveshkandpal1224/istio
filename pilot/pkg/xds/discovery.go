@@ -537,7 +537,7 @@ func (s *DiscoveryServer) initPushContext(req *model.PushRequest, oldPushContext
 	}
 
 	s.updateMutex.Lock()
-	log.Infof("sfdclog: updating push context prev version: %s, curr version: %s", oldPushContext.PushVersion, push.PushVersion)
+	// log.Infof("sfdclog: updating push context prev version: %s, curr version: %s", oldPushContext.PushVersion, push.PushVersion)
 	s.Env.PushContext = push
 	// Ensure we drop the cache in the lock to avoid races, where we drop the cache, fill it back up, then update push context
 	s.dropCacheForRequest(req)
